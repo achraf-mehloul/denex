@@ -1,37 +1,26 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Database, Download, Trash2, Plus, Play } from "lucide-react";
-import { listSessions, saveSession, deleteSession, type Session } from "@/lib/db";
+import { Database, Download, Trash2, Play, FileJson, FileSpreadsheet, Bluetooth } from "lucide-react";
+import { listSessions, deleteSession, getSession, type SessionMeta } from "@/lib/db";
+import { exportCsv, exportJson, fromSession } from "@/lib/export";
+import { EmptyState } from "@/components/EmptyState";
 
 export const Route = createFileRoute("/_app/sessions")({
   component: SessionsPage,
 });
 
 function SessionsPage() {
-  const [items, setItems] = useState<Session[]>([]);
+  const [items, setItems] = useState<SessionMeta[]>([]);
   const refresh = () => listSessions().then(setItems).catch(() => setItems([]));
   useEffect(() => { refresh(); }, []);
 
-  const addDemo = async () => {
-    await saveSession({
-      id: crypto.randomUUID(),
-      startedAt: Date.now(),
-      durationMs: Math.floor(60_000 + Math.random() * 600_000),
-      avgBpm: Math.round(65 + Math.random() * 20),
-      signalQuality: Math.round(85 + Math.random() * 14),
-      samples: Math.floor(15_000 + Math.random() * 80_000),
-    });
-    refresh();
-  };
-
   const remove = async (id: string) => { await deleteSession(id); refresh(); };
 
-  const exportJson = (s: Session) => {
-    const blob = new Blob([JSON.stringify(s, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = `denex-session-${s.id}.json`; a.click();
-    URL.revokeObjectURL(url);
+  const doExport = async (id: string, fmt: "csv" | "json") => {
+    const s = await getSession(id);
+    if (!s) return;
+    const payload = fromSession(s);
+    if (fmt === "csv") exportCsv(payload); else exportJson(payload);
   };
 
   const fmtDur = (ms: number) => {
@@ -42,50 +31,65 @@ function SessionsPage() {
 
   return (
     <div className="p-4 md:p-8 max-w-[1400px] mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <div className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground">Archive</div>
           <h1 className="text-2xl md:text-3xl font-semibold mt-1">Sessions</h1>
+          <p className="text-sm text-muted-foreground mt-2 max-w-2xl">Recorded sessions are stored locally in IndexedDB. Replay or export them as CSV / JSON for offline analysis.</p>
         </div>
-        <button onClick={addDemo} className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:opacity-90">
-          <Plus className="h-4 w-4" /> New session
-        </button>
       </div>
 
-      <div className="rounded-xl glass overflow-hidden">
-        <div className="grid grid-cols-12 px-5 py-3 text-[10px] uppercase tracking-[0.2em] text-muted-foreground border-b border-border/60">
-          <div className="col-span-4">Started</div>
-          <div className="col-span-2">Duration</div>
-          <div className="col-span-2">Avg BPM</div>
-          <div className="col-span-2">Quality</div>
-          <div className="col-span-2 text-right">Actions</div>
-        </div>
-        {items.length === 0 ? (
-          <div className="px-5 py-16 text-center text-sm text-muted-foreground flex flex-col items-center gap-3">
-            <Database className="h-8 w-8 opacity-40" />
-            No sessions stored locally.
+      {items.length === 0 ? (
+        <EmptyState
+          icon={Database}
+          title="No recordings yet"
+          description="Connect a sensor on the Bluetooth Center, then press Start recording on the dashboard. Stored sessions appear here."
+          ctaLabel="Pair a device"
+          ctaTo="/bluetooth"
+        />
+      ) : (
+        <div className="rounded-xl glass overflow-hidden">
+          <div className="grid grid-cols-12 px-5 py-3 text-[10px] uppercase tracking-[0.2em] text-muted-foreground border-b border-border/60">
+            <div className="col-span-3">Started</div>
+            <div className="col-span-2">Device</div>
+            <div className="col-span-1">Duration</div>
+            <div className="col-span-1">Avg BPM</div>
+            <div className="col-span-2">Quality</div>
+            <div className="col-span-1">Samples</div>
+            <div className="col-span-2 text-right">Actions</div>
           </div>
-        ) : items.map((s) => (
-          <div key={s.id} className="grid grid-cols-12 items-center px-5 py-3 text-sm border-b border-border/40 last:border-0 hover:bg-secondary/20">
-            <div className="col-span-4 text-mono">{new Date(s.startedAt).toLocaleString()}</div>
-            <div className="col-span-2 text-mono">{fmtDur(s.durationMs)}</div>
-            <div className="col-span-2 text-mono">{s.avgBpm}</div>
-            <div className="col-span-2">
-              <div className="flex items-center gap-2">
-                <div className="h-1 w-20 rounded bg-background overflow-hidden">
-                  <div className="h-full bg-primary" style={{ width: `${s.signalQuality}%` }} />
+          {items.map((s) => (
+            <div key={s.id} className="grid grid-cols-12 items-center gap-2 px-5 py-3 text-sm border-b border-border/40 last:border-0 hover:bg-secondary/20">
+              <div className="col-span-3 text-mono truncate">{new Date(s.startedAt).toLocaleString()}</div>
+              <div className="col-span-2 truncate">{s.deviceName ?? "—"}</div>
+              <div className="col-span-1 text-mono">{fmtDur(s.durationMs)}</div>
+              <div className="col-span-1 text-mono">{s.avgBpm || "—"}</div>
+              <div className="col-span-2">
+                <div className="flex items-center gap-2">
+                  <div className="h-1 w-20 rounded bg-background overflow-hidden">
+                    <div className="h-full bg-primary" style={{ width: `${s.signalQuality}%` }} />
+                  </div>
+                  <span className="text-xs text-mono text-muted-foreground">{s.signalQuality}%</span>
                 </div>
-                <span className="text-xs text-mono text-muted-foreground">{s.signalQuality}%</span>
+              </div>
+              <div className="col-span-1 text-mono text-xs text-muted-foreground">{s.samples.toLocaleString()}</div>
+              <div className="col-span-2 flex items-center justify-end gap-1.5">
+                <Link to="/replay" search={{ id: s.id }} className="p-2 rounded hover:bg-secondary/60" title="Replay"><Play className="h-3.5 w-3.5" /></Link>
+                <button onClick={() => doExport(s.id, "csv")} className="p-2 rounded hover:bg-secondary/60" title="Export CSV"><FileSpreadsheet className="h-3.5 w-3.5" /></button>
+                <button onClick={() => doExport(s.id, "json")} className="p-2 rounded hover:bg-secondary/60" title="Export JSON"><FileJson className="h-3.5 w-3.5" /></button>
+                <button onClick={() => remove(s.id)} className="p-2 rounded hover:bg-secondary/60 text-[oklch(0.70_0.20_25)]" title="Delete"><Trash2 className="h-3.5 w-3.5" /></button>
               </div>
             </div>
-            <div className="col-span-2 flex items-center justify-end gap-1.5">
-              <button className="p-2 rounded hover:bg-secondary/60" title="Replay"><Play className="h-3.5 w-3.5" /></button>
-              <button onClick={() => exportJson(s)} className="p-2 rounded hover:bg-secondary/60" title="Export"><Download className="h-3.5 w-3.5" /></button>
-              <button onClick={() => remove(s.id)} className="p-2 rounded hover:bg-secondary/60 text-[oklch(0.70_0.20_25)]" title="Delete"><Trash2 className="h-3.5 w-3.5" /></button>
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
+
+      {items.length > 0 && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Download className="h-3.5 w-3.5" /> CSV format: <code className="text-mono">index,time_s,original_mV,noisy_mV,filtered_mV</code>
+          <Bluetooth className="h-3.5 w-3.5 ml-4" /> Recordings only contain real sensor data captured while connected.
+        </div>
+      )}
     </div>
   );
 }

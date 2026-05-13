@@ -1,16 +1,40 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { ble } from "@/lib/bluetooth";
+import { clearAllSessions } from "@/lib/db";
 
 export const Route = createFileRoute("/_app/settings")({
   component: SettingsPage,
 });
 
+const KEY = "denex.prefs";
+type Prefs = { sweep: number; gain: number; keepAwake: boolean };
+const defaultPrefs = (): Prefs => ({ sweep: 2.2, gain: 1, keepAwake: false });
+const loadPrefs = (): Prefs => {
+  try { return { ...defaultPrefs(), ...JSON.parse(localStorage.getItem(KEY) ?? "{}") }; } catch { return defaultPrefs(); }
+};
+const savePrefs = (p: Prefs) => { try { localStorage.setItem(KEY, JSON.stringify(p)); } catch { /* noop */ } };
+
 function SettingsPage() {
-  const [speed, setSpeed] = useState(2.2);
-  const [amp, setAmp] = useState(1);
-  const [autoReconnect, setAutoReconnect] = useState(true);
-  const [highPerf, setHighPerf] = useState(true);
-  const [keepAwake, setKeepAwake] = useState(false);
+  const [prefs, setPrefs] = useState<Prefs>(() => (typeof window === "undefined" ? defaultPrefs() : loadPrefs()));
+  const [, setTick] = useState(0);
+  useEffect(() => { savePrefs(prefs); }, [prefs]);
+  useEffect(() => {
+    const u = ble.subscribe(() => setTick((t) => t + 1));
+    return () => { u(); };
+  }, []);
+
+  // Wake lock (best-effort).
+  useEffect(() => {
+    let lock: { release: () => Promise<void> } | null = null;
+    const nav = navigator as Navigator & { wakeLock?: { request: (k: string) => Promise<{ release: () => Promise<void> }> } };
+    if (prefs.keepAwake && nav.wakeLock) {
+      nav.wakeLock.request("screen").then((l) => { lock = l; }).catch(() => { /* noop */ });
+    }
+    return () => { lock?.release().catch(() => {}); };
+  }, [prefs.keepAwake]);
+
+  const set = <K extends keyof Prefs>(k: K, v: Prefs[K]) => setPrefs((p) => ({ ...p, [k]: v }));
 
   return (
     <div className="p-4 md:p-8 max-w-[1100px] mx-auto space-y-6">
@@ -20,32 +44,41 @@ function SettingsPage() {
       </div>
 
       <Section title="Waveform">
-        <Row label="Sweep speed" hint={`${speed.toFixed(1)} mm/s`}>
-          <input type="range" min={0.8} max={5} step={0.1} value={speed} onChange={(e) => setSpeed(+e.target.value)} className="w-full accent-[oklch(0.78_0.15_190)]" />
+        <Row label="Sweep speed" hint={`${prefs.sweep.toFixed(1)} mm/s`}>
+          <input type="range" min={0.8} max={5} step={0.1} value={prefs.sweep} onChange={(e) => set("sweep", +e.target.value)} className="w-full accent-[oklch(0.78_0.15_190)]" />
         </Row>
-        <Row label="Amplitude gain" hint={`${amp.toFixed(2)}x`}>
-          <input type="range" min={0.5} max={2} step={0.05} value={amp} onChange={(e) => setAmp(+e.target.value)} className="w-full accent-[oklch(0.78_0.15_190)]" />
+        <Row label="Amplitude gain" hint={`${prefs.gain.toFixed(2)}x`}>
+          <input type="range" min={0.5} max={2} step={0.05} value={prefs.gain} onChange={(e) => set("gain", +e.target.value)} className="w-full accent-[oklch(0.78_0.15_190)]" />
         </Row>
       </Section>
 
       <Section title="Bluetooth">
-        <Toggle label="Auto-reconnect to last device" value={autoReconnect} onChange={setAutoReconnect} />
-        <Toggle label="High-throughput streaming" value={highPerf} onChange={setHighPerf} />
+        <Toggle label="Auto-reconnect to last device" value={ble.autoReconnect} onChange={(v) => ble.setAutoReconnect(v)} />
+        <Row label="Saved device" hint={ble.savedDeviceName() ?? "None"}>
+          <button
+            onClick={() => ble.forgetDevice()}
+            disabled={!ble.savedDeviceName()}
+            className="px-3 py-1.5 rounded border border-border text-xs hover:bg-secondary/40 disabled:opacity-30"
+          >Forget device</button>
+        </Row>
       </Section>
 
       <Section title="Application">
-        <Toggle label="Keep screen awake during sessions" value={keepAwake} onChange={setKeepAwake} />
-        <Row label="Storage" hint="Local IndexedDB · Encrypted at rest">
-          <button className="px-3 py-1.5 rounded border border-border text-xs hover:bg-secondary/40">Clear cache</button>
+        <Toggle label="Keep screen awake during sessions" value={prefs.keepAwake} onChange={(v) => set("keepAwake", v)} />
+        <Row label="Local storage" hint="IndexedDB · sessions are kept on-device only">
+          <button
+            onClick={async () => { if (confirm("Delete all stored sessions?")) await clearAllSessions(); }}
+            className="px-3 py-1.5 rounded border border-border text-xs hover:bg-secondary/40"
+          >Clear all sessions</button>
         </Row>
       </Section>
 
       <Section title="About">
         <div className="text-sm text-muted-foreground leading-relaxed">
           Denex is a frontend-only ECG monitoring platform built for biomedical engineering workflows.
-          Built with Web Bluetooth, IndexedDB and a streaming canvas renderer.
+          All data lives in your browser; nothing is transmitted off-device. Powered by Web Bluetooth, IndexedDB and a streaming canvas renderer.
         </div>
-        <div className="mt-3 text-mono text-xs text-muted-foreground">v0.1.0 · build live</div>
+        <div className="mt-3 text-mono text-xs text-muted-foreground">v0.2.0 · build live</div>
       </Section>
     </div>
   );
@@ -59,7 +92,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     </div>
   );
 }
-
 function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div className="grid md:grid-cols-3 gap-3 items-center">
@@ -71,7 +103,6 @@ function Row({ label, hint, children }: { label: string; hint?: string; children
     </div>
   );
 }
-
 function Toggle({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
   return (
     <div className="flex items-center justify-between gap-3">
