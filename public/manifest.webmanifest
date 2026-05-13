@@ -1,0 +1,15 @@
+{
+  "name": "Denex — ECG Monitoring",
+  "short_name": "Denex",
+  "description": "Real-time ECG monitoring, Bluetooth signal streaming, and waveform processing.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0b1418",
+  "theme_color": "#0b1418",
+  "icons": [
+    { "src": "/favicon.ico", "sizes": "64x64 32x32 24x24 16x16", "type": "image/x-icon" },
+    { "src": "/denex-logo.jpg", "sizes": "512x512", "type": "image/jpeg", "purpose": "any" }
+  ]
+}
