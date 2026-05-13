@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation } from "@tanstack/react-router";
-import { Activity, Bluetooth, Database, Settings, Heart } from "lucide-react";
+import { Activity, Bluetooth, Database, Settings, Heart, Play, Sparkles } from "lucide-react";
 import logo from "@/assets/denex-logo.jpg";
 import { useEffect, useState } from "react";
 import { ble } from "@/lib/bluetooth";
@@ -8,6 +8,8 @@ const nav = [
   { to: "/", label: "Dashboard", icon: Activity },
   { to: "/bluetooth", label: "Bluetooth", icon: Bluetooth },
   { to: "/sessions", label: "Sessions", icon: Database },
+  { to: "/replay", label: "Replay", icon: Play },
+  { to: "/correction", label: "Correction", icon: Sparkles },
   { to: "/settings", label: "Settings", icon: Settings },
 ] as const;
 

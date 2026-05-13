@@ -13,6 +13,8 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppSessionsRouteImport } from './routes/_app/sessions'
+import { Route as AppReplayRouteImport } from './routes/_app/replay'
+import { Route as AppCorrectionRouteImport } from './routes/_app/correction'
 import { Route as AppBluetoothRouteImport } from './routes/_app/bluetooth'
 
 const AppRoute = AppRouteImport.update({
@@ -34,6 +36,16 @@ const AppSessionsRoute = AppSessionsRouteImport.update({
   path: '/sessions',
   getParentRoute: () => AppRoute,
 } as any)
+const AppReplayRoute = AppReplayRouteImport.update({
+  id: '/replay',
+  path: '/replay',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCorrectionRoute = AppCorrectionRouteImport.update({
+  id: '/correction',
+  path: '/correction',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppBluetoothRoute = AppBluetoothRouteImport.update({
   id: '/bluetooth',
   path: '/bluetooth',
@@ -43,11 +55,15 @@ const AppBluetoothRoute = AppBluetoothRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/bluetooth': typeof AppBluetoothRoute
+  '/correction': typeof AppCorrectionRoute
+  '/replay': typeof AppReplayRoute
   '/sessions': typeof AppSessionsRoute
   '/settings': typeof AppSettingsRoute
 }
 export interface FileRoutesByTo {
   '/bluetooth': typeof AppBluetoothRoute
+  '/correction': typeof AppCorrectionRoute
+  '/replay': typeof AppReplayRoute
   '/sessions': typeof AppSessionsRoute
   '/settings': typeof AppSettingsRoute
   '/': typeof AppIndexRoute
@@ -56,19 +72,29 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/_app/bluetooth': typeof AppBluetoothRoute
+  '/_app/correction': typeof AppCorrectionRoute
+  '/_app/replay': typeof AppReplayRoute
   '/_app/sessions': typeof AppSessionsRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_app/': typeof AppIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/bluetooth' | '/sessions' | '/settings'
+  fullPaths:
+    | '/'
+    | '/bluetooth'
+    | '/correction'
+    | '/replay'
+    | '/sessions'
+    | '/settings'
   fileRoutesByTo: FileRoutesByTo
-  to: '/bluetooth' | '/sessions' | '/settings' | '/'
+  to: '/bluetooth' | '/correction' | '/replay' | '/sessions' | '/settings' | '/'
   id:
     | '__root__'
     | '/_app'
     | '/_app/bluetooth'
+    | '/_app/correction'
+    | '/_app/replay'
     | '/_app/sessions'
     | '/_app/settings'
     | '/_app/'
@@ -108,6 +134,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSessionsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/replay': {
+      id: '/_app/replay'
+      path: '/replay'
+      fullPath: '/replay'
+      preLoaderRoute: typeof AppReplayRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/correction': {
+      id: '/_app/correction'
+      path: '/correction'
+      fullPath: '/correction'
+      preLoaderRoute: typeof AppCorrectionRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/bluetooth': {
       id: '/_app/bluetooth'
       path: '/bluetooth'
@@ -120,6 +160,8 @@ declare module '@tanstack/react-router' {
 
 interface AppRouteChildren {
   AppBluetoothRoute: typeof AppBluetoothRoute
+  AppCorrectionRoute: typeof AppCorrectionRoute
+  AppReplayRoute: typeof AppReplayRoute
   AppSessionsRoute: typeof AppSessionsRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppIndexRoute: typeof AppIndexRoute
@@ -127,6 +169,8 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppBluetoothRoute: AppBluetoothRoute,
+  AppCorrectionRoute: AppCorrectionRoute,
+  AppReplayRoute: AppReplayRoute,
   AppSessionsRoute: AppSessionsRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppIndexRoute: AppIndexRoute,
@@ -140,3 +184,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
