@@ -99,6 +99,17 @@ class SignalStore {
     this.emit();
   }
 
+  // BLE adapter pushes one or more RR intervals (ms) parsed from the HR
+  // packet — instantaneous BPM and HRV-friendly history without waiting for
+  // the next averaged HR measurement.
+  pushRr(rrMs: number[]) {
+    for (const rr of rrMs) {
+      if (!Number.isFinite(rr) || rr <= 0) continue;
+      const bpm = Math.round(60_000 / rr);
+      if (bpm > 0 && bpm < 300) this.pushBpm(bpm);
+    }
+  }
+
   // BLE adapter pushes a raw ECG sample (already converted to mV by the
   // device or its driver). Optional channel — many BLE sensors only expose
   // BPM. When called, the buffers fill with REAL data only.
