@@ -27,7 +27,8 @@ function BluetoothPage() {
 
   const connected = ble.isLive();
   const reconnecting = ble.state === "reconnecting" || ble.state === "connecting" || ble.state === "discovering" || ble.state === "subscribing";
-  const supported = ble.isSupported();
+  const sup = ble.browserSupport();
+  const supported = sup.supported;
   const savedName = ble.savedDeviceName();
 
   return (
@@ -42,8 +43,13 @@ function BluetoothPage() {
         <div className="rounded-xl glass p-4 flex items-start gap-3 border border-[oklch(0.65_0.22_25)]/40">
           <AlertTriangle className="h-5 w-5 text-[oklch(0.70_0.20_25)] mt-0.5 shrink-0" />
           <div className="text-sm">
-            <div className="font-medium">Web Bluetooth not supported</div>
-            <div className="text-muted-foreground mt-1">Use Chrome, Edge or Opera over HTTPS. iOS Safari does not expose Web Bluetooth.</div>
+            <div className="font-medium">Web Bluetooth unavailable on this browser</div>
+            <div className="text-muted-foreground mt-1">{sup.hint}</div>
+            {sup.isIos && (
+              <div className="text-xs text-muted-foreground mt-2">
+                Recommended on iOS: install the <a href="https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055" target="_blank" rel="noreferrer" className="text-primary underline-offset-2 hover:underline">Bluefy</a> browser, then open Denex inside it.
+              </div>
+            )}
           </div>
         </div>
       )}
