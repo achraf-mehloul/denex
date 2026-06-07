@@ -134,8 +134,30 @@ function BluetoothPage() {
             </button>
           </label>
 
+          <div className="mt-4 rounded-lg bg-secondary/30 px-4 py-3">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <div className="text-sm font-medium">Scan mode</div>
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  {ble.scanMode === "hr" && "Standard Heart Rate sensors (Polar, Wahoo, Garmin…)"}
+                  {ble.scanMode === "services" && `Filtered by ${ble.scanServices.length} service UUID(s)`}
+                  {ble.scanMode === "all" && "Accept all nearby BLE devices (DIY · ESP32 · custom)"}
+                </div>
+              </div>
+              <div className="flex gap-1">
+                {(["hr", "services", "all"] as const).map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => ble.setScanMode(m)}
+                    className={`px-2.5 py-1 rounded text-[11px] border ${ble.scanMode === m ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-secondary/40"}`}
+                  >{m === "hr" ? "HR" : m === "services" ? "Services" : "All"}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+
           <div className="mt-4 text-xs text-muted-foreground">
-            After recording, head to the <Link to="/sessions" className="text-primary underline-offset-2 hover:underline">Sessions</Link> page to replay or export.
+            Configure custom Service / Characteristic UUIDs in <Link to="/settings" className="text-primary underline-offset-2 hover:underline">Settings</Link>. After recording, see <Link to="/sessions" className="text-primary underline-offset-2 hover:underline">Sessions</Link>.
           </div>
         </div>
 
