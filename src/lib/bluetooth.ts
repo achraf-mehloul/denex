@@ -1,12 +1,18 @@
-// Web Bluetooth manager — REAL data only.
+// Web Bluetooth manager — REAL data only, with broad device compatibility.
+//
+// Supports three scan modes:
+//   • "hr"      — only devices advertising Heart Rate Service (default)
+//   • "services"— filter by a user-provided list of service UUIDs
+//   • "all"     — acceptAllDevices (discover anything in range, DIY/ESP32)
 //
 // Pipes:
-//   • Heart Rate Service (0x180D) → BPM into the signal store
+//   • Heart Rate Service (0x180D) → BPM + RR-intervals into the signal store
 //   • Optional custom raw-stream characteristic (Float32 little-endian
-//     samples, configurable UUID) → waveform buffers
-// Adds rich BLE telemetry: jitter, throughput, packet age, RSSI, battery,
-// rolling packet-loss estimate, and exponential-backoff auto-reconnect
-// with persistent device id across PWA restarts.
+//     samples, configurable Service + Char UUIDs) → waveform buffers
+//   • Battery Service (0x180F) when present
+//
+// Telemetry: jitter, throughput, packet age, battery, packet-loss heuristic,
+// exponential-backoff auto-reconnect with persistent device id.
 
 import { signal } from "./signal";
 
@@ -23,9 +29,22 @@ export type BleState =
   | "unsupported";
 
 export type BleLog = { ts: number; level: "info" | "warn" | "error" | "ok"; msg: string };
+export type ScanMode = "hr" | "services" | "all";
+export type BrowserSupport = {
+  supported: boolean;
+  isIos: boolean;
+  isSafari: boolean;
+  isFirefox: boolean;
+  isSecureContext: boolean;
+  hint: string;
+};
 
 const STORAGE_KEY = "denex.ble.lastDevice";
-const RAW_UUID_KEY = "denex.ble.rawUuid";
+const RAW_CHAR_KEY = "denex.ble.rawCharUuid";
+const RAW_SVC_KEY = "denex.ble.rawSvcUuid";
+const SCAN_MODE_KEY = "denex.ble.scanMode";
+const SCAN_SVCS_KEY = "denex.ble.scanServices";
+const AUTO_KEY = "denex.ble.autoReconnect";
 
 type Listener = () => void;
 
@@ -68,10 +87,9 @@ class BluetoothManager {
   device: AnyBleDevice | null = null;
   state: BleState = "idle";
   battery = 0;
-  rssi = 0;
-  packetLoss = 0;       // %
-  throughput = 0;       // notifications / sec (rolling)
-  jitterMs = 0;         // stddev of inter-packet interval (rolling)
+  packetLoss = 0;
+  throughput = 0;
+  jitterMs = 0;
   avgIntervalMs = 0;
   lastPacketTs = 0;
   hasRawStream = false;
@@ -81,6 +99,9 @@ class BluetoothManager {
   nextReconnectAt = 0;
   lastError: string | null = null;
   rawCharUuid: string | null = null;
+  rawSvcUuid: string | null = null;
+  scanMode: ScanMode = "hr";
+  scanServices: string[] = [];
 
   private listeners = new Set<Listener>();
   private hrChar: GattChar | null = null;
@@ -92,8 +113,7 @@ class BluetoothManager {
 
   constructor() {
     if (typeof window !== "undefined") {
-      this.loadAutoReconnect();
-      try { this.rawCharUuid = localStorage.getItem(RAW_UUID_KEY); } catch { /* noop */ }
+      this.loadPrefs();
       queueMicrotask(() => this.tryRestore());
     }
   }
@@ -101,37 +121,88 @@ class BluetoothManager {
   subscribe(l: Listener) { this.listeners.add(l); return () => this.listeners.delete(l); }
   private emit() { for (const l of this.listeners) l(); }
   private log(level: BleLog["level"], msg: string) {
-    this.logs = [{ ts: Date.now(), level, msg }, ...this.logs].slice(0, 120);
+    this.logs = [{ ts: Date.now(), level, msg }, ...this.logs].slice(0, 200);
     this.emit();
   }
 
-  isSupported(): boolean { return typeof navigator !== "undefined" && "bluetooth" in navigator; }
+  isSupported(): boolean {
+    return typeof navigator !== "undefined" && "bluetooth" in navigator;
+  }
+
+  /** Detailed environment check with platform-specific guidance. */
+  browserSupport(): BrowserSupport {
+    if (typeof navigator === "undefined") {
+      return { supported: false, isIos: false, isSafari: false, isFirefox: false, isSecureContext: false, hint: "" };
+    }
+    const ua = navigator.userAgent || "";
+    const isIos = /iPad|iPhone|iPod/.test(ua) || (ua.includes("Mac") && "ontouchend" in document);
+    const isSafari = /^((?!chrome|android|crios|fxios).)*safari/i.test(ua);
+    const isFirefox = /Firefox|FxiOS/i.test(ua);
+    const supported = "bluetooth" in navigator;
+    const isSecureContext = typeof window !== "undefined" ? window.isSecureContext : false;
+    let hint = "";
+    if (!supported) {
+      if (isIos) hint = "iOS/iPadOS does not expose Web Bluetooth in any browser. Use the Bluefy browser, or open Denex on Chrome/Edge desktop or Android.";
+      else if (isSafari) hint = "Safari does not implement Web Bluetooth. Use Chrome, Edge, or Opera.";
+      else if (isFirefox) hint = "Firefox does not enable Web Bluetooth by default. Use Chrome, Edge, or Opera.";
+      else hint = "Your browser does not support Web Bluetooth. Try Chrome, Edge, or Opera over HTTPS.";
+    } else if (!isSecureContext) {
+      hint = "Web Bluetooth requires HTTPS or localhost.";
+    }
+    return { supported: supported && isSecureContext, isIos, isSafari, isFirefox, isSecureContext, hint };
+  }
 
   setAutoReconnect(v: boolean) {
     this.autoReconnect = v;
-    try { localStorage.setItem("denex.ble.autoReconnect", v ? "1" : "0"); } catch { /* noop */ }
+    try { localStorage.setItem(AUTO_KEY, v ? "1" : "0"); } catch { /* noop */ }
     this.emit();
   }
-  private loadAutoReconnect() {
-    try {
-      const raw = localStorage.getItem("denex.ble.autoReconnect");
-      if (raw !== null) this.autoReconnect = raw === "1";
-    } catch { /* noop */ }
+
+  setScanMode(m: ScanMode) {
+    this.scanMode = m;
+    try { localStorage.setItem(SCAN_MODE_KEY, m); } catch { /* noop */ }
+    this.emit();
+  }
+
+  setScanServices(list: string[]) {
+    this.scanServices = list.map((s) => s.trim().toLowerCase()).filter(Boolean);
+    try { localStorage.setItem(SCAN_SVCS_KEY, JSON.stringify(this.scanServices)); } catch { /* noop */ }
+    this.emit();
   }
 
   setRawCharUuid(uuid: string | null) {
     this.rawCharUuid = uuid && uuid.trim() ? uuid.trim().toLowerCase() : null;
     try {
-      if (this.rawCharUuid) localStorage.setItem(RAW_UUID_KEY, this.rawCharUuid);
-      else localStorage.removeItem(RAW_UUID_KEY);
+      if (this.rawCharUuid) localStorage.setItem(RAW_CHAR_KEY, this.rawCharUuid);
+      else localStorage.removeItem(RAW_CHAR_KEY);
     } catch { /* noop */ }
     this.emit();
   }
 
-  private persistDevice(d: AnyBleDevice) {
+  setRawSvcUuid(uuid: string | null) {
+    this.rawSvcUuid = uuid && uuid.trim() ? uuid.trim().toLowerCase() : null;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ id: d.id, name: d.name ?? null, ts: Date.now() }));
+      if (this.rawSvcUuid) localStorage.setItem(RAW_SVC_KEY, this.rawSvcUuid);
+      else localStorage.removeItem(RAW_SVC_KEY);
     } catch { /* noop */ }
+    this.emit();
+  }
+
+  private loadPrefs() {
+    try {
+      const a = localStorage.getItem(AUTO_KEY);
+      if (a !== null) this.autoReconnect = a === "1";
+      this.rawCharUuid = localStorage.getItem(RAW_CHAR_KEY);
+      this.rawSvcUuid = localStorage.getItem(RAW_SVC_KEY);
+      const sm = localStorage.getItem(SCAN_MODE_KEY) as ScanMode | null;
+      if (sm === "hr" || sm === "services" || sm === "all") this.scanMode = sm;
+      const svcs = localStorage.getItem(SCAN_SVCS_KEY);
+      if (svcs) this.scanServices = JSON.parse(svcs) as string[];
+    } catch { /* noop */ }
+  }
+
+  private persistDevice(d: AnyBleDevice) {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ id: d.id, name: d.name ?? null, ts: Date.now() })); } catch { /* noop */ }
   }
   private loadPersisted(): { id: string; name: string | null } | null {
     try {
@@ -166,24 +237,41 @@ class BluetoothManager {
     }
   }
 
+  /** Build optionalServices list — every service we may want to access. */
+  private buildOptionalServices(): string[] {
+    const set = new Set<string>(["battery_service", "device_information", "heart_rate"]);
+    for (const s of this.scanServices) set.add(s);
+    if (this.rawSvcUuid) set.add(this.rawSvcUuid);
+    if (this.rawCharUuid) set.add(this.rawCharUuid);
+    return Array.from(set);
+  }
+
   async scanAndConnect() {
-    if (!this.isSupported()) {
+    const sup = this.browserSupport();
+    if (!sup.supported) {
       this.state = "unsupported";
-      this.log("error", "Web Bluetooth is not supported in this browser.");
+      this.lastError = sup.hint;
+      this.log("error", sup.hint || "Web Bluetooth unavailable");
       this.emit();
       return;
     }
     this.cancelReconnect();
     try {
       this.state = "scanning"; this.lastError = null; this.emit();
-      this.log("info", "Requesting BLE device…");
       const nav = navigator as BleNavigator;
-      const optional: string[] = ["battery_service", "device_information"];
-      if (this.rawCharUuid) optional.push(this.rawCharUuid);
-      const device = await nav.bluetooth.requestDevice({
-        filters: [{ services: ["heart_rate"] }],
-        optionalServices: optional,
-      });
+      const optional = this.buildOptionalServices();
+      let opts: object;
+      if (this.scanMode === "all") {
+        this.log("info", "Scanning ALL nearby BLE devices…");
+        opts = { acceptAllDevices: true, optionalServices: optional };
+      } else if (this.scanMode === "services" && this.scanServices.length > 0) {
+        this.log("info", `Scanning by services: ${this.scanServices.join(", ")}`);
+        opts = { filters: [{ services: this.scanServices }], optionalServices: optional };
+      } else {
+        this.log("info", "Scanning Heart Rate devices…");
+        opts = { filters: [{ services: ["heart_rate"] }], optionalServices: optional };
+      }
+      const device = await nav.bluetooth.requestDevice(opts);
       this.persistDevice(device);
       await this.attach(device);
     } catch (e) {
@@ -216,9 +304,12 @@ class BluetoothManager {
       this.state = "discovering"; this.emit();
       this.resetStats();
       this.hasRawStream = false;
+      this.hrChar = null;
+      this.rawChar = null;
 
-      // Heart Rate Service — required.
       this.state = "subscribing"; this.emit();
+
+      // Heart Rate Service — best-effort.
       try {
         const hrSvc = await server.getPrimaryService("heart_rate");
         const hrChar = await hrSvc.getCharacteristic("heart_rate_measurement");
@@ -230,23 +321,36 @@ class BluetoothManager {
         this.log("warn", `HR service unavailable: ${msg(e)}`);
       }
 
-      // Optional raw waveform characteristic.
+      // Optional raw waveform characteristic — supports either a known
+      // service UUID (fast path) or a brute-force search of every service.
       if (this.rawCharUuid) {
         try {
-          const services = (await server.getPrimaryServices?.()) ?? [];
-          for (const svc of services) {
-            const chars = (await svc.getCharacteristics?.()) ?? [];
-            const match = chars.find((c) => c.uuid.toLowerCase() === this.rawCharUuid);
-            if (match) {
-              match.addEventListener("characteristicvaluechanged", this.onRawChange);
-              await match.startNotifications();
-              this.rawChar = match;
-              this.hasRawStream = true;
-              this.log("ok", `Subscribed to raw stream ${match.uuid}`);
-              break;
+          let found: GattChar | null = null;
+          if (this.rawSvcUuid) {
+            try {
+              const svc = await server.getPrimaryService(this.rawSvcUuid);
+              found = await svc.getCharacteristic(this.rawCharUuid);
+            } catch { /* fall through to scan */ }
+          }
+          if (!found) {
+            const services = (await server.getPrimaryServices?.()) ?? [];
+            for (const svc of services) {
+              try {
+                const chars = (await svc.getCharacteristics?.()) ?? [];
+                const match = chars.find((c) => c.uuid.toLowerCase() === this.rawCharUuid);
+                if (match) { found = match; break; }
+              } catch { /* skip */ }
             }
           }
-          if (!this.rawChar) this.log("warn", `Raw characteristic ${this.rawCharUuid} not found`);
+          if (found) {
+            found.addEventListener("characteristicvaluechanged", this.onRawChange);
+            await found.startNotifications();
+            this.rawChar = found;
+            this.hasRawStream = true;
+            this.log("ok", `Subscribed to raw stream ${found.uuid}`);
+          } else {
+            this.log("warn", `Raw characteristic ${this.rawCharUuid} not found`);
+          }
         } catch (e) {
           this.log("warn", `Raw subscription failed: ${msg(e)}`);
         }
@@ -259,6 +363,10 @@ class BluetoothManager {
         const v = await batChar.readValue();
         this.battery = v.getUint8(0);
       } catch { this.battery = 0; }
+
+      if (!this.hrChar && !this.rawChar) {
+        this.log("warn", "No known characteristics on this device. Try setting a Raw Service/Char UUID in Settings.");
+      }
 
       this.state = "streaming";
       this.reconnectAttempts = 0;
@@ -291,7 +399,6 @@ class BluetoothManager {
     const elapsed = (now - this.windowStart) / 1000;
     if (elapsed >= 1) {
       this.throughput = +(this.windowCount / elapsed).toFixed(1);
-      // packet loss heuristic vs expected throughput (HR ≈ 1Hz baseline)
       if (this.avgIntervalMs > 0) {
         const expected = Math.max(1, Math.round(elapsed * (1000 / this.avgIntervalMs)));
         this.packetLoss = +Math.max(0, Math.min(100, ((expected - this.windowCount) / expected) * 100)).toFixed(1);
@@ -308,7 +415,22 @@ class BluetoothManager {
     try {
       const flags = v.getUint8(0);
       const is16 = (flags & 0x1) === 0x1;
-      const bpm = is16 ? v.getUint16(1, true) : v.getUint8(1);
+      const energyPresent = (flags & 0x8) === 0x8;
+      const rrPresent = (flags & 0x10) === 0x10;
+      let offset = 1;
+      const bpm = is16 ? v.getUint16(offset, true) : v.getUint8(offset);
+      offset += is16 ? 2 : 1;
+      if (energyPresent) offset += 2;
+      if (rrPresent) {
+        const rrs: number[] = [];
+        while (offset + 2 <= v.byteLength) {
+          const rr1024 = v.getUint16(offset, true);
+          offset += 2;
+          const rrMs = (rr1024 / 1024) * 1000;
+          if (rrMs > 200 && rrMs < 3000) rrs.push(rrMs);
+        }
+        if (rrs.length) signal.pushRr(rrs);
+      }
       if (bpm > 0 && bpm < 300) {
         signal.pushBpm(bpm);
         this.trackPacket();
@@ -324,7 +446,6 @@ class BluetoothManager {
     const v = target.value;
     if (!v || v.byteLength < 4) return;
     try {
-      // Generic decoder: little-endian Float32 stream.
       for (let i = 0; i + 4 <= v.byteLength; i += 4) {
         const sample = v.getFloat32(i, true);
         if (Number.isFinite(sample)) signal.pushSample(sample);
