@@ -1,117 +1,151 @@
-# Denex — Real-time ECG Monitoring & Signal Processing
+# Denoiz — Clean Signal, Safe Life
 
-A frontend-only Progressive Web App for high-fidelity, real-time ECG monitoring
-over Bluetooth Low Energy. Designed for biomedical engineering workflows.
-**No backend. No fake data. Nothing leaves the device.**
+Plateforme frontend de monitoring ECG temps réel, conçue pour l'ingénierie biomédicale, la recherche et les applications futures d'intelligence artificielle appliquée au signal cardiaque.
 
-> Denex stays empty until a real Bluetooth sensor sends a measurement. Every
-> number, waveform and recording on screen is derived from that live stream.
+## Vue d'ensemble
 
----
+- Plateforme 100 % frontend (aucun backend, aucune API distante).
+- Communication Bluetooth Low Energy réelle via l'API Web Bluetooth.
+- Traitement du signal cardiaque en temps réel : filtrage, HRV, détection QRS, arythmies.
+- Progressive Web App installable, responsive sur mobile, tablette et desktop.
+- Thème sombre et thème clair, avec bascule persistante.
+- Aucune donnée n'est envoyée à un serveur : tout reste sur l'appareil.
 
-## Features
+## Fonctionnalités
 
-### Real-time monitoring
-- Live BPM, signal quality, latency, battery and recording duration tiles.
-- Triple-channel waveform display: **Original**, **Noisy capture**, **Filtered output**, all rendered on a hardware-accelerated 2D canvas at 250 Hz.
-- High-DPI aware, smooth 60 fps redraw with a glowing trace and clinical grid.
+### Connectivité Bluetooth
+- Trois modes de scan : Heart Rate standard, filtrage par UUID de service, acceptation universelle (DIY, ESP32, prototypes).
+- Restauration automatique du dernier capteur au redémarrage.
+- Reconnexion automatique avec backoff exponentiel (1s à 30s).
+- Suivi de la perte de paquets, du jitter, du débit, de l'intervalle moyen.
+- Lecture du niveau de batterie du capteur si exposé.
+- Extraction des intervalles RR à partir de la trame Heart Rate standard.
+- Support d'une caractéristique brute Float32 little-endian pour les capteurs personnalisés.
+- Détection des navigateurs incompatibles (iOS Safari, Firefox) avec message d'orientation.
+- Journal d'événements Bluetooth en direct.
 
-### Bluetooth (Web Bluetooth API)
-- Pairs with any standard Heart Rate Service (`0x180D`) sensor.
-- Reads the optional Battery Service (`0x180F`) for live battery percent.
-- **Auto-reconnect** with exponential backoff (1 s → 2 s → 4 s … capped at 30 s).
-- **Persistent connection state** — last paired device is restored on PWA restart via `navigator.bluetooth.getDevices()` (Chromium).
-- Manual *Retry now* and *Forget device* controls; live BLE log timeline.
-- Packet-loss estimation from notification cadence vs. expected rate.
-- Graceful fallback messaging on browsers without Web Bluetooth (Safari/iOS).
+### Monitoring temps réel
+- Barre d'état globale persistante affichant état BLE, BPM, débit, mode démo, thème.
+- Tableau de bord en grille bento : rythme cardiaque en grand format, métriques secondaires en tuiles compactes.
+- Visualisation d'onde ECG haute performance sur canvas HTML5, 250 Hz.
+- Superposition des pics R détectés par algorithme Pan-Tompkins simplifié.
+- Historique du rythme cardiaque avec dégradé et lissage temporel.
+- Indicateur de qualité de signal en pourcentage.
+- Animation de battement synchronisée sur le BPM courant.
 
-### Signal processing pipeline
-- IIR biquad **notch filter** (50/60 Hz mains) with adjustable Q.
-- First-order **high-pass filter** for baseline drift removal (cutoff 0.05–3 Hz).
-- Causal **moving-average smoother** with adjustable window.
-- All filters run live on the noisy stream and feed the *Filtered* channel.
+### Analyse HRV
+- RMSSD : racine carrée de la moyenne des carrés des différences RR successives.
+- SDNN : écart-type des intervalles RR.
+- pNN50 : pourcentage d'intervalles RR successifs différant de plus de 50 ms.
+- Fréquence cardiaque moyenne et intervalle RR moyen.
+- Deux fenêtres de calcul : 2 minutes et 5 minutes.
 
-### Guided signal correction workflow
-- Step-by-step UI walks you through baseline drift, mains notch, and smoothing.
-- Live **before/after preview** on a rolling 6-second snapshot of your capture.
-- Per-stage parameter sliders (cutoff, frequency, Q, window).
-- One-click **Apply to live stream**, plus *Reset to defaults*.
+### Détection d'arythmies
+- Tachycardie (supérieur à 100 bpm, alerte au-delà de 130).
+- Bradycardie (inférieur à 50 bpm, alerte en dessous de 40).
+- Rythme irrégulier basé sur RMSSD anormalement élevé.
+- Codage tricolore : normal, surveillance, alerte.
 
-### Sessions & local storage
-- Press **Start recording** on the dashboard to capture all three channels.
-- Sessions are stored in **IndexedDB** with the full Float32 sample arrays.
-- Browse, delete, replay or export from the Sessions archive.
-- *Clear all sessions* in Settings for a hard reset.
+### Correction guidée du signal
+- Assistant en trois étapes : suppression de la dérive de base, filtre coupe-bande secteur, lissage.
+- Aperçu avant/après sur un échantillon glissant de six secondes.
+- Filtres réglables : biquad notch, passe-haut du premier ordre, moyenne mobile.
+- Application confirmée en direct sur le flux principal.
 
-### Replay viewer
-- Open any saved session in the **Session Playback** view.
-- Synchronized scrubber across Original / Noisy / Filtered traces.
-- Play / pause, ±1 s nudge, **0.5× / 1× / 2× / 4×** playback rates.
-- **Zoom in/out** (1× → 64×) and a precise time read-out.
-- Inline CSV / JSON export.
+### Sessions et archives
+- Enregistrement local des sessions dans IndexedDB.
+- Chaque session conserve les trois pistes complètes (original, bruité, filtré).
+- Pagination de l'archive au-delà de douze enregistrements.
+- Suppression individuelle ou vidage complet.
 
-### Export controls
-- **CSV**: `index, time_s, original_mV, noisy_mV, filtered_mV` — opens in Excel, Pandas, MATLAB.
-- **Compact JSON** (`denex.session.v1`): metadata + all three channels for offline analysis pipelines.
-- Available from both the Sessions archive and the Replay view.
+### Relecture
+- Lecteur avec lecture, pause, avance/retour d'une seconde.
+- Vitesses de lecture : 0.5×, 1×, 2×, 4×.
+- Zoom temporel jusqu'à 64×.
+- Barre de scrubbing synchronisée avec les trois pistes.
+- Raccourcis clavier : Espace (lecture/pause), flèches (±1s, Shift ±5s), plus et moins (zoom).
+- Annotations horodatées ancrées à un instant précis de la session.
 
-### Settings
-- Sweep speed and amplitude gain controls (persisted in `localStorage`).
-- Auto-reconnect toggle, *Forget device*, *Clear all sessions*.
-- Optional **Screen Wake Lock** to keep the display on during long captures.
+### Comparaison de sessions
+- Sélection de deux enregistrements en parallèle.
+- Visualisation côte à côte des pistes brutes et filtrées.
+- Fenêtre temporelle commune synchronisée automatiquement.
+- Métriques comparatives : durée, BPM moyen, qualité.
 
-### PWA & native feel
-- Full Web App Manifest (icons, theme color, standalone display, splash).
-- Apple-specific meta for iOS install banners and status bar styling.
-- Offline-friendly: every UI route works without network once loaded.
-- Dark, biomedical-grade aesthetic in `oklch` color space, glassy surfaces,
-  precise typography (Inter / JetBrains Mono).
+### Calibration
+- Gain (mV par unité brute) et offset (mV) réglables.
+- Application temps réel à chaque échantillon entrant.
+- Formule affichée en direct.
+- Persistance locale.
 
----
+### Export
+- CSV structuré : en-tête de métadonnées, colonnes index, temps, original, bruité, filtré.
+- JSON structuré : bloc métadonnées, checksums FNV-1a par piste, canaux complets.
+- Snapshot PNG haute résolution du tableau de bord avec pied de rapport signé Denoiz.
+- Téléchargement direct côté navigateur.
 
-## Architecture
+### Mode démo
+- Rejeu d'un enregistrement ECG intégré comme s'il s'agissait d'un flux BLE réel.
+- Bascule depuis la barre d'état ou depuis l'état vide du moniteur.
+- Détection R basique intégrée pour émettre des tics BPM authentiques.
+- Chargement à la demande, sans impact sur les performances lorsqu'inactif.
 
-```
-src/
-├── lib/
-│   ├── bluetooth.ts   Web Bluetooth manager + auto-reconnect + persistence
-│   ├── signal.ts      Central signal store (ring buffer, recording, pipeline)
-│   ├── dsp.ts         Notch / high-pass / smoothing filters
-│   ├── ecg.ts         Clinical PQRST morphology generator
-│   ├── db.ts          IndexedDB session storage
-│   └── export.ts      CSV / JSON exporters
-├── components/
-│   ├── EcgWaveform.tsx   Live streaming canvas
-│   ├── EcgPlayback.tsx   Static buffer canvas with viewport + marker
-│   ├── AppShell.tsx      Sidebar + mobile nav
-│   ├── StatTile.tsx
-│   └── EmptyState.tsx
-└── routes/
-    ├── _app/index.tsx       Dashboard
-    ├── _app/bluetooth.tsx   Device center
-    ├── _app/sessions.tsx    Archive
-    ├── _app/replay.tsx      Playback
-    ├── _app/correction.tsx  Guided correction
-    └── _app/settings.tsx
-```
+### Notifications
+- Permission demandée à l'utilisateur.
+- Alerte système native en cas de déconnexion du capteur pendant un enregistrement.
 
----
+### Progressive Web App
+- Manifeste complet avec icônes any et maskable.
+- Métadonnées Apple et Android pour l'installation.
+- Barre de statut translucide sur iOS.
+- Orientation portrait par défaut.
+- Écran de démarrage adapté aux thèmes clair et sombre.
 
-## Browser support
+### Design system
+- Typographie : Space Grotesk pour les titres, JetBrains Mono pour les nombres et les données.
+- Palette OKLCH cohérente entre thème clair et thème sombre.
+- Effets verre dépoli, halo primaire, transitions Framer Motion partagées entre les vues.
+- Illustration SVG animée pour les états vides.
+- Micro-interactions layoutId sur les transitions sessions vers relecture.
+- Grille bento adaptative de deux à douze colonnes.
 
-| Browser            | Live monitoring | Bluetooth | Replay / Export |
-|--------------------|-----------------|-----------|-----------------|
-| Chrome / Edge      | ✅              | ✅        | ✅              |
-| Opera / Brave      | ✅              | ✅        | ✅              |
-| Firefox            | ✅              | ❌        | ✅              |
-| Safari (macOS/iOS) | ✅              | ❌        | ✅              |
+### Confidentialité et sécurité
+- Aucune télémétrie, aucun tracker, aucune requête externe applicative.
+- IndexedDB et localStorage strictement locaux.
+- Aucune identification utilisateur.
+- Aucun envoi de données de santé sur le réseau.
 
-Web Bluetooth requires HTTPS (or `localhost`).
+## Compatibilité
 
----
+- Chrome, Edge et Opera sur Desktop et Android : compatibilité complète.
+- Safari sur iOS, iPadOS et macOS : Web Bluetooth non supporté par le navigateur. Alternative : navigateur Bluefy sur iOS.
+- Firefox : Web Bluetooth désactivé par défaut, utiliser un navigateur Chromium.
+- HTTPS ou localhost obligatoires pour l'accès Bluetooth.
 
-## Privacy
+## Matériel supporté
 
-All recordings, preferences and connection state live in `IndexedDB` and
-`localStorage` on the device that captured them. There is no server, no
-analytics, no telemetry, and no demo content.
+- Capteurs conformes au profil Bluetooth Heart Rate (Polar H10, H9, Wahoo TICKR, Garmin HRM).
+- Modules DIY basés sur ESP32, nRF52 ou équivalent exposant une caractéristique Float32.
+- Tout périphérique BLE en mode Accept All pour test et développement.
+
+## Structure des données de session
+
+Chaque session enregistrée contient :
+
+- Identifiant unique.
+- Horodatage de démarrage et durée.
+- Fréquence d'échantillonnage.
+- BPM moyen et indice de qualité.
+- Trois buffers Float32Array (original, bruité, filtré).
+- Nom de l'appareil source ou mention du mode démo.
+
+## Architecture technique
+
+- Vite, React 19, TanStack Router en routage typé.
+- Tailwind CSS v4 avec design tokens OKLCH.
+- Framer Motion pour animations et transitions partagées.
+- Aucune dépendance backend, aucun serveur.
+
+## Licence
+
+Projet à usage personnel et éducatif. Pas d'usage clinique sans validation réglementaire.

@@ -15,7 +15,9 @@ import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppSessionsRouteImport } from './routes/_app/sessions'
 import { Route as AppReplayRouteImport } from './routes/_app/replay'
 import { Route as AppCorrectionRouteImport } from './routes/_app/correction'
+import { Route as AppCompareRouteImport } from './routes/_app/compare'
 import { Route as AppBluetoothRouteImport } from './routes/_app/bluetooth'
+import { Route as AppAnalyticsRouteImport } from './routes/_app/analytics'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -46,22 +48,36 @@ const AppCorrectionRoute = AppCorrectionRouteImport.update({
   path: '/correction',
   getParentRoute: () => AppRoute,
 } as any)
+const AppCompareRoute = AppCompareRouteImport.update({
+  id: '/compare',
+  path: '/compare',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppBluetoothRoute = AppBluetoothRouteImport.update({
   id: '/bluetooth',
   path: '/bluetooth',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAnalyticsRoute = AppAnalyticsRouteImport.update({
+  id: '/analytics',
+  path: '/analytics',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
+  '/analytics': typeof AppAnalyticsRoute
   '/bluetooth': typeof AppBluetoothRoute
+  '/compare': typeof AppCompareRoute
   '/correction': typeof AppCorrectionRoute
   '/replay': typeof AppReplayRoute
   '/sessions': typeof AppSessionsRoute
   '/settings': typeof AppSettingsRoute
 }
 export interface FileRoutesByTo {
+  '/analytics': typeof AppAnalyticsRoute
   '/bluetooth': typeof AppBluetoothRoute
+  '/compare': typeof AppCompareRoute
   '/correction': typeof AppCorrectionRoute
   '/replay': typeof AppReplayRoute
   '/sessions': typeof AppSessionsRoute
@@ -71,7 +87,9 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
+  '/_app/analytics': typeof AppAnalyticsRoute
   '/_app/bluetooth': typeof AppBluetoothRoute
+  '/_app/compare': typeof AppCompareRoute
   '/_app/correction': typeof AppCorrectionRoute
   '/_app/replay': typeof AppReplayRoute
   '/_app/sessions': typeof AppSessionsRoute
@@ -82,17 +100,29 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/analytics'
     | '/bluetooth'
+    | '/compare'
     | '/correction'
     | '/replay'
     | '/sessions'
     | '/settings'
   fileRoutesByTo: FileRoutesByTo
-  to: '/bluetooth' | '/correction' | '/replay' | '/sessions' | '/settings' | '/'
+  to:
+    | '/analytics'
+    | '/bluetooth'
+    | '/compare'
+    | '/correction'
+    | '/replay'
+    | '/sessions'
+    | '/settings'
+    | '/'
   id:
     | '__root__'
     | '/_app'
+    | '/_app/analytics'
     | '/_app/bluetooth'
+    | '/_app/compare'
     | '/_app/correction'
     | '/_app/replay'
     | '/_app/sessions'
@@ -148,6 +178,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCorrectionRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/compare': {
+      id: '/_app/compare'
+      path: '/compare'
+      fullPath: '/compare'
+      preLoaderRoute: typeof AppCompareRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/bluetooth': {
       id: '/_app/bluetooth'
       path: '/bluetooth'
@@ -155,11 +192,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppBluetoothRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/analytics': {
+      id: '/_app/analytics'
+      path: '/analytics'
+      fullPath: '/analytics'
+      preLoaderRoute: typeof AppAnalyticsRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
+  AppAnalyticsRoute: typeof AppAnalyticsRoute
   AppBluetoothRoute: typeof AppBluetoothRoute
+  AppCompareRoute: typeof AppCompareRoute
   AppCorrectionRoute: typeof AppCorrectionRoute
   AppReplayRoute: typeof AppReplayRoute
   AppSessionsRoute: typeof AppSessionsRoute
@@ -168,7 +214,9 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppAnalyticsRoute: AppAnalyticsRoute,
   AppBluetoothRoute: AppBluetoothRoute,
+  AppCompareRoute: AppCompareRoute,
   AppCorrectionRoute: AppCorrectionRoute,
   AppReplayRoute: AppReplayRoute,
   AppSessionsRoute: AppSessionsRoute,
