@@ -29,7 +29,8 @@ function SettingsPage() {
   useEffect(() => {
     const u = ble.subscribe(() => setTick((t) => t + 1));
     const c = calibration.subscribe(() => setTick((t) => t + 1));
-    return () => { u(); c(); };
+    const th = theme.subscribe(() => setTick((t) => t + 1));
+    return () => { u(); c(); th(); };
   }, []);
 
   useEffect(() => {
