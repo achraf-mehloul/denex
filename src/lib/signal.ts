@@ -96,6 +96,13 @@ class SignalStore {
     this.bpmHistory.push(point);
     if (this.bpmHistory.length > BPM_HISTORY_MAX) this.bpmHistory.shift();
     if (this.recording) this.recBpm.push(point);
+    // Haptic tick on each detected beat (mobile only, opt-out via localStorage flag).
+    try {
+      if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+        const off = typeof localStorage !== "undefined" && localStorage.getItem("denoiz.haptic") === "0";
+        if (!off) (navigator as Navigator & { vibrate: (p: number) => boolean }).vibrate(15);
+      }
+    } catch { /* noop */ }
     this.emit();
   }
 

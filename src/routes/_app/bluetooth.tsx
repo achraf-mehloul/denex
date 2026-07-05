@@ -36,7 +36,7 @@ function BluetoothPage() {
       <div>
         <div className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground">Connectivity</div>
         <h1 className="text-2xl md:text-3xl font-semibold mt-1">Bluetooth Device Center</h1>
-        <p className="text-sm text-muted-foreground mt-2 max-w-2xl">Pair, monitor and manage low-energy biomedical sensors over the Web Bluetooth API. Denex auto-reconnects with exponential backoff and remembers your device across app restarts.</p>
+        <p className="text-sm text-muted-foreground mt-2 max-w-2xl">Pair, monitor and manage low-energy biomedical sensors over the Web Bluetooth API. Denoiz auto-reconnects with exponential backoff and remembers your device across app restarts.</p>
       </div>
 
       {!supported && (
@@ -47,7 +47,7 @@ function BluetoothPage() {
             <div className="text-muted-foreground mt-1">{sup.hint}</div>
             {sup.isIos && (
               <div className="text-xs text-muted-foreground mt-2">
-                Recommended on iOS: install the <a href="https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055" target="_blank" rel="noreferrer" className="text-primary underline-offset-2 hover:underline">Bluefy</a> browser, then open Denex inside it.
+                Recommended on iOS: install the <a href="https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055" target="_blank" rel="noreferrer" className="text-primary underline-offset-2 hover:underline">Bluefy</a> browser, then open Denoiz inside it.
               </div>
             )}
           </div>
