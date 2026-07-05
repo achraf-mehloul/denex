@@ -136,6 +136,43 @@ function SettingsPage() {
         </Row>
       </Section>
 
+      <Section title="Apparence">
+        <Row label="Thème" hint="Bascule entre le moniteur sombre et le mode clair. Sauvegardé localement.">
+          <div className="flex gap-2">
+            <button
+              onClick={() => theme.set("dark")}
+              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded border text-xs ${theme.current === "dark" ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-secondary/40"}`}
+            ><Moon className="h-3.5 w-3.5" /> Sombre</button>
+            <button
+              onClick={() => theme.set("light")}
+              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded border text-xs ${theme.current === "light" ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-secondary/40"}`}
+            ><Sun className="h-3.5 w-3.5" /> Clair</button>
+          </div>
+        </Row>
+      </Section>
+
+      <Section title="Notifications">
+        <div className="text-xs text-muted-foreground -mt-2">
+          Alerte locale lorsqu'un capteur se déconnecte pendant un enregistrement. Aucune donnée n'est envoyée en dehors du navigateur.
+        </div>
+        <Row label="Alertes de déconnexion" hint={notifySupported() ? (notifyEnabled() ? "Actives" : "Inactives") : "Non supporté par ce navigateur"}>
+          <div className="flex gap-2">
+            <button
+              onClick={async () => {
+                if (!notifySupported()) return;
+                if (notifyEnabled()) { setNotifyEnabled(false); setTick((t) => t + 1); return; }
+                await requestNotify();
+                setTick((t) => t + 1);
+              }}
+              disabled={!notifySupported()}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded border border-border text-xs disabled:opacity-40 hover:bg-secondary/40"
+            >
+              {notifyEnabled() ? <><Bell className="h-3.5 w-3.5" /> Désactiver</> : <><BellOff className="h-3.5 w-3.5" /> Activer</>}
+            </button>
+          </div>
+        </Row>
+      </Section>
+
       <Section title="Application">
         <Toggle label="Keep screen awake during sessions" value={prefs.keepAwake} onChange={(v) => set("keepAwake", v)} />
         <Row label="Local storage" hint="IndexedDB · sessions are kept on-device only">
@@ -146,12 +183,12 @@ function SettingsPage() {
         </Row>
       </Section>
 
-      <Section title="About">
+      <Section title="À propos">
         <div className="text-sm text-muted-foreground leading-relaxed">
-          Denex is a frontend-only ECG monitoring platform built for biomedical engineering workflows.
-          Real-data only — no synthetic generators, no demo mode. All data lives in your browser.
+          Denoiz est une plateforme frontend de monitoring ECG pensée pour les workflows de génie biomédical.
+          Toutes les données restent sur votre appareil — IndexedDB local, aucun serveur, aucun tracking.
         </div>
-        <div className="mt-3 text-mono text-xs text-muted-foreground">v0.3.0 · build live</div>
+        <div className="mt-3 text-mono text-xs text-muted-foreground">Denoiz · Clean Signal · Safe Life</div>
       </Section>
     </div>
   );
