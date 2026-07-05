@@ -11,7 +11,7 @@ export const Route = createFileRoute("/_app/settings")({
   component: SettingsPage,
 });
 
-const KEY = "denex.prefs";
+const KEY = "denoiz.prefs";
 type Prefs = { sweep: number; gain: number; keepAwake: boolean };
 const defaultPrefs = (): Prefs => ({ sweep: 2.2, gain: 1, keepAwake: false });
 const loadPrefs = (): Prefs => {
