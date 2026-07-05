@@ -156,7 +156,7 @@ function Dashboard() {
               <span className="text-[9px] text-muted-foreground">bpm</span>
             </div>
             <div className="flex-1 h-full py-1.5 min-w-0">
-              <EcgWaveform label="" color="oklch(0.78 0.18 155)" channel="filtered" height={40} compact />
+              <EcgWaveform label="" color="oklch(0.78 0.18 155)" channel="filtered" height={40} />
             </div>
           </motion.div>
         )}
