@@ -66,7 +66,7 @@ function Dashboard() {
       pullStart.current = null;
       if (p > 60 && !refreshing) {
         setRefreshing(true);
-        try { await ble.reconnect(); } catch { /* noop */ }
+        try { await ble.reconnectNow(); } catch { /* noop */ }
         setTimeout(() => { setRefreshing(false); setPull(0); }, 800);
       } else {
         setPull(0);
